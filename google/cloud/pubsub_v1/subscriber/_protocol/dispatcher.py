@@ -305,8 +305,6 @@ class Dispatcher(object):
         """
         assert self._manager.leaser is not None
         self._manager.leaser.remove(items)
-        ordering_keys = (k.ordering_key for k in items if k.ordering_key)
-        self._manager.activate_ordering_keys(ordering_keys)
         self._manager.maybe_resume_consumer()
 
     def lease(self, items: Sequence[requests.LeaseRequest]) -> None:

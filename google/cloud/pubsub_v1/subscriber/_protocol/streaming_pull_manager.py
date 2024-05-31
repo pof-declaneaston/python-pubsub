@@ -110,13 +110,14 @@ def _wrap_as_exception(maybe_exception: Any) -> BaseException:
     return Exception(maybe_exception)
 
 
-def _wrap_callback_errors(
+def _wrap_callback(
     callback: Callable[["google.cloud.pubsub_v1.subscriber.message.Message"], Any],
     on_callback_error: Callable[[BaseException], Any],
+    on_callback_complete: Callable[["google.cloud.pubsub_v1.subscriber.message.Message"], Any],
     message: "google.cloud.pubsub_v1.subscriber.message.Message",
 ):
     """Wraps a user callback so that if an exception occurs the message is
-    nacked.
+    nacked. If it is completed successfully the on_complete callback is called.
 
     Args:
         callback: The user callback.
@@ -124,6 +125,7 @@ def _wrap_callback_errors(
     """
     try:
         callback(message)
+        on_callback_complete(message)
     except BaseException as exc:
         # Note: the likelihood of this failing is extremely low. This just adds
         # a message to a queue, so if this doesn't work the world is in an
@@ -811,6 +813,15 @@ class StreamingPullManager(object):
             return True
 
         return False
+    
+    def _on_callback_complete(self, message: "google.cloud.pubsub_v1.subscriber.message.Message"):
+        """Called when the user callback has completed.
+
+        Args:
+            message: The message that was processed.
+        """
+        if message.ordering_key:
+            self.activate_ordering_keys([message.ordering_key])
 
     def open(
         self,
@@ -834,7 +845,7 @@ class StreamingPullManager(object):
             raise ValueError("This manager has been closed and can not be re-used.")
 
         self._callback = functools.partial(
-            _wrap_callback_errors, callback, on_callback_error
+            _wrap_callback, callback, on_callback_error, self._on_callback_complete
         )
 
         # Create the RPC
